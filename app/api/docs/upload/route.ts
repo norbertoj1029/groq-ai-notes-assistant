@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 import { chunkText } from "@/lib/documentChunks";
+import { createChunkInputs } from "@/lib/embeddings";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -134,17 +135,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const chunks = chunkText(content);
+    const chunks = await createChunkInputs(chunkText(content));
 
     const note = await prisma.note.create({
       data: {
         title: getNoteTitle(file.name),
         content,
         chunks: {
-          create: chunks.map((chunk, index) => ({
-            content: chunk,
-            chunkIndex: index,
-          })),
+          create: chunks,
         },
       },
     });

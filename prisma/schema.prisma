@@ -16,12 +16,15 @@ model Note {
 }
 
 model DocumentChunk {
-  id         String   @id @default(cuid())
-  noteId     String
-  content    String
-  chunkIndex Int
-  createdAt  DateTime @default(now())
-  note       Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  noteId         String
+  content        String
+  chunkIndex     Int
+  embedding      String?
+  embeddingModel String?
+  createdAt      DateTime @default(now())
+  note           Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
 
   @@index([noteId])
+  @@index([embeddingModel])
 }

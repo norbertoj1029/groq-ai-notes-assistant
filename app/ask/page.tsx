@@ -4,6 +4,8 @@ import { useState } from 'react';
 
 type Source = {
   id?: string;
+  chunkId?: string;
+  chunkIndex?: number;
   title?: string;
   content?: string;
   score?: number;
@@ -108,13 +110,19 @@ export default function AskPage() {
             <div className="space-y-4">
               {sources.map((source, index) => (
                 <div
-                  key={source.id || index}
+                  key={source.chunkId || source.id || index}
                   className="rounded-md border border-gray-200 p-4"
                 >
                   {source.title && (
                     <h3 className="mb-2 font-medium text-gray-900">
                       {source.title}
                     </h3>
+                  )}
+
+                  {typeof source.chunkIndex === 'number' && (
+                    <p className="mb-2 text-xs text-gray-500">
+                      Chunk {source.chunkIndex + 1}
+                    </p>
                   )}
 
                   {source.content && (

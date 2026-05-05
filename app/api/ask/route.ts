@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import Groq from "groq-sdk";
 import type { DocumentChunk, Note } from "@prisma/client";
+import {
+  cosineSimilarity,
+  createEmbeddings,
+  parseEmbedding,
+} from "@/lib/embeddings";
 import { prisma } from "@/lib/prisma";
 
 const groq = new Groq({
@@ -12,6 +17,7 @@ type SearchCandidate = {
   title: string;
   content: string;
   createdAt: Date;
+  embedding?: number[] | null;
   chunkId?: string;
   chunkIndex?: number;
 };
@@ -31,6 +37,7 @@ type NoteWithChunkMarkers = Note & {
 function searchCandidates(
   question: string,
   candidates: SearchCandidate[],
+  questionEmbedding: number[] | null,
   limit = 8
 ): ScoredCandidate[] {
   const terms = question
@@ -42,10 +49,19 @@ function searchCandidates(
     .map((candidate) => {
       const text = `${candidate.title} ${candidate.content}`.toLowerCase();
 
-      const score = terms.reduce((total, term) => {
+      const keywordScore = terms.reduce((total, term) => {
         const matches = text.match(new RegExp(`\\b${term}\\b`, "g"));
         return total + (matches ? matches.length : 0);
       }, 0);
+
+      const semanticScore =
+        questionEmbedding && candidate.embedding
+          ? cosineSimilarity(questionEmbedding, candidate.embedding)
+          : 0;
+      const score =
+        semanticScore > 0
+          ? semanticScore + Math.min(keywordScore, 5) * 0.02
+          : keywordScore;
 
       return {
         ...candidate,
@@ -63,6 +79,7 @@ function chunkToCandidate(chunk: ChunkWithNote): SearchCandidate {
     title: chunk.note.title,
     content: chunk.content,
     createdAt: chunk.note.createdAt,
+    embedding: parseEmbedding(chunk.embedding),
     chunkId: chunk.id,
     chunkIndex: chunk.chunkIndex,
   };
@@ -75,6 +92,16 @@ function noteToCandidate(note: Note): SearchCandidate {
     content: note.content,
     createdAt: note.createdAt,
   };
+}
+
+async function createQuestionEmbedding(question: string) {
+  try {
+    const [embedding] = await createEmbeddings([question]);
+    return embedding || null;
+  } catch (error) {
+    console.error("Question embedding failed:", error);
+    return null;
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -130,7 +157,15 @@ export async function POST(request: NextRequest) {
         .map((note) => noteToCandidate(note)),
     ];
 
-    const matchedSources = searchCandidates(question, candidates);
+    const hasStoredEmbeddings = candidates.some((candidate) => candidate.embedding);
+    const questionEmbedding = hasStoredEmbeddings
+      ? await createQuestionEmbedding(question)
+      : null;
+    const matchedSources = searchCandidates(
+      question,
+      candidates,
+      questionEmbedding
+    );
 
     if (matchedSources.length === 0) {
       return NextResponse.json({
